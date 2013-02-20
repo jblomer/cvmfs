@@ -94,6 +94,7 @@ set (CVMFS_SWISSKNIFE_SOURCES
   upload_facility.h upload_facility.cc
   upload_local.h upload_local.cc
   upload_riak.h upload_riak.cc
+  upload_s3.h upload_s3.cc
   json_document.h json_document.cc
 
   duplex_curl.h download.h download.cc
@@ -365,7 +366,7 @@ if (BUILD_SERVER)
   set_target_properties (cvmfs_swissknife PROPERTIES COMPILE_FLAGS "${CVMFS_SWISSKNIFE_CFLAGS}" LINK_FLAGS "${CVMFS_SWISSKNIFE_LD_FLAGS}")
 
   # link the stuff (*_LIBRARIES are dynamic link libraries)
-  target_link_libraries (cvmfs_swissknife  ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} pthread dl)
+  target_link_libraries (cvmfs_swissknife  ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} /home/rene/Documents/Schweinestall/webstor/webstor.a xml2 pthread dl)
 
   if (BUILD_SERVER_DEBUG)
     add_executable (cvmfs_swissknife_debug ${CVMFS_SWISSKNIFE_DEBUG_SOURCES})
