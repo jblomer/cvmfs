@@ -6,12 +6,14 @@
 
 #include "upload_local.h"
 #include "upload_riak.h"
+#include "upload_s3.h"
 
 using namespace upload;
 
 void AbstractUploader::RegisterPlugins() {
   RegisterPlugin<LocalUploader>();
   RegisterPlugin<RiakUploader>();
+  RegisterPlugin<S3Uploader>();
 }
 
 

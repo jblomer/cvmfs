@@ -20,8 +20,10 @@ struct SpoolerDefinition {
   enum DriverType {
     Riak,
     Local,
+    S3,
     Unknown
   };
+  DriverType String2DriverType(const std::string &str) const;
 
   /**
    * Reads a given definition_string as described above and interprets

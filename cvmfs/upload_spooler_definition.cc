@@ -39,12 +39,9 @@ SpoolerDefinition::SpoolerDefinition(
   }
 
   // recognize and configure the spooler driver
-  if (upstream[0]        == "local") {
-    driver_type = Local;
-  } else if (upstream[0] == "riak") {
-    driver_type = Riak;
-  } else {
-    LogCvmfs(kLogSpooler, kLogStderr, "unknown spooler driver: %s",
+  driver_type = String2DriverType(upstream[0]);
+  if (driver_type == Unknown) {
+    LogCvmfs(kLogSpooler, kLogStderr, "unknown spooler driver type: %s",
       upstream[0].c_str());
     return;
   }
@@ -53,4 +50,17 @@ SpoolerDefinition::SpoolerDefinition(
   temporary_path        = upstream[1];
   spooler_configuration = upstream[2];
   valid_ = true;
+}
+
+SpoolerDefinition::DriverType SpoolerDefinition::String2DriverType(
+                                                 const std::string &str) const {
+  if (str        == "local") {
+    return Local;
+  } else if (str == "riak") {
+    return Riak;
+  } else if (str == "s3") {
+    return S3;
+  } else {
+    return Unknown;
+  }
 }
