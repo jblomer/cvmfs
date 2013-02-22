@@ -5,11 +5,21 @@
 #ifndef CVMFS_UPLOAD_S3_H_
 #define CVMFS_UPLOAD_S3_H_
 
+#include <string>
+
 #include "upload_facility.h"
+#include "util.h"
+
+namespace webstor {
+  class WsConnection;
+}
 
 namespace upload {
 
 class S3Uploader : public AbstractUploader {
+ protected:
+  const static std::string kStandardPort;
+
  public:
   // PolymorphicConstruction methods
   S3Uploader(const SpoolerDefinition &spooler_definition);
@@ -36,6 +46,17 @@ class S3Uploader : public AbstractUploader {
 
   void WaitForUpload() const;
   unsigned int GetNumberOfErrors() const;
+
+ protected:
+  bool ParseSpoolerDefinition(const SpoolerDefinition &spooler_definition);
+
+ private:
+  std::string                       host_;
+  std::string                       port_;
+  std::string                       access_key_;
+  std::string                       secret_key_;
+
+  UniquePtr<webstor::WsConnection>  connection_;
 };
 
 }

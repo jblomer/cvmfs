@@ -348,7 +348,7 @@ if (BUILD_SERVER)
 
   include (${VJSON_BUILTIN_LOCATION}/CVMFS-CMakeLists.txt)
   add_dependencies (cvmfs_swissknife libvjson)
-  set (INCLUDE_DIRECTORIES ${INCLUDE_DIRECTORIES} ${VJSON_BUILTIN_LOCATION}/src)
+  set (INCLUDE_DIRECTORIES ${INCLUDE_DIRECTORIES} ${VJSON_BUILTIN_LOCATION}/src /home/rene/Documents/Schweinestall/)
   include_directories (${INCLUDE_DIRECTORIES})
 
   if (LIBCURL_BUILTIN)
@@ -386,7 +386,7 @@ if (BUILD_SERVER)
     set_target_properties (cvmfs_swissknife_debug PROPERTIES COMPILE_FLAGS "${CVMFS_SWISSKNIFE_DEBUG_CFLAGS}" LINK_FLAGS "${CVMFS_SWISSKNIFE_LD_FLAGS}")
 
     # link the stuff (*_LIBRARIES are dynamic link libraries)
-    target_link_libraries (cvmfs_swissknife_debug  ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} pthread dl)
+    target_link_libraries (cvmfs_swissknife_debug  ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} /home/rene/Documents/Schweinestall/webstor/webstor.a xml2 pthread dl)
   endif (BUILD_SERVER_DEBUG)
 endif (BUILD_SERVER)
 
