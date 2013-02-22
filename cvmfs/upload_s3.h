@@ -19,16 +19,11 @@ class S3Uploader : public AbstractUploader {
   const static std::string kStandardPort;
 
   struct WorkerContext {
-    WorkerContext(const std::string  &host,
-                  const std::string  &port,
-                  const std::string  &access_key,
-                  const std::string  &secret_key) :
-      host(host), port(port), access_key(access_key), secret_key(secret_key) {}
-
-    const std::string  &host;
-    const std::string  &port;
-    const std::string  &access_key;
-    const std::string  &secret_key;
+    std::string host;
+    std::string port;
+    std::string access_key;
+    std::string secret_key;
+    std::string bucket;
   };
 
  public:
@@ -63,11 +58,6 @@ class S3Uploader : public AbstractUploader {
 
  private:
   friend class S3UploadWorker;
-
-  std::string                                    host_;
-  std::string                                    port_;
-  std::string                                    access_key_;
-  std::string                                    secret_key_;
 
   UniquePtr<WorkerContext>                       worker_context_;
   UniquePtr<ConcurrentWorkers<S3UploadWorker> >  concurrent_workers_;

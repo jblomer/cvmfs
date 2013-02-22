@@ -5,6 +5,7 @@
 #include "upload_s3.h"
 
 #include <webstor/wsconn.h>
+#include <cassert>
 
 using namespace upload;
 
@@ -13,11 +14,12 @@ const std::string S3Uploader::kStandardPort = "80"; // TODO: ????
 namespace upload {
 
 class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
- private:
-  UniquePtr<webstor::WsConnection>  connection_;
-
  protected:
   typedef S3Uploader::callback_t callback_t;
+
+ private:
+  UniquePtr<webstor::WsConnection>  connection_;
+  const std::string                 bucket_;
 
  public:
   struct Parameters {
@@ -53,7 +55,9 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
   typedef S3Uploader::WorkerContext  worker_context;
 
  public:
-  S3UploadWorker(const worker_context *context) {
+  S3UploadWorker(const worker_context *context) :
+    bucket_(context->bucket)
+  {
     webstor::WsConfig configuration = {};
 
     configuration.accKey   = context->access_key.c_str();
@@ -67,7 +71,28 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
   }
 
   void operator()(const Parameters &input) {
+    const bool make_public       = true;
+    const bool server_encryption = false;
 
+    MemoryMappedFile mmf(input.local_path);
+    if (! mmf.Map()) {
+      LogCvmfs(kLogSpooler, kLogStderr, "Failed to upload %s",
+               input.local_path.c_str());
+      master()->JobFailed(Results(input.local_path, 1, input.callback));
+      return;
+    }
+
+    webstor::WsPutResponse response;
+    connection_->put(bucket_.c_str(),
+                     input.remote_path.c_str(),
+                     mmf.buffer(),
+                     mmf.size(),
+                     make_public,
+                     server_encryption,
+                     "application/x-cvmfs",
+                     &response);
+
+    master()->JobSuccessful(Results(input.local_path, 0, input.callback));
   }
 
   bool Initialize() {
@@ -87,21 +112,24 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
 //
 
 S3Uploader::S3Uploader(const SpoolerDefinition &spooler_definition) :
-  AbstractUploader(spooler_definition)
+  AbstractUploader(spooler_definition),
+  worker_context_(new S3Uploader::WorkerContext)
 {
   if (! ParseSpoolerDefinition(spooler_definition)) {
     abort();
   }
 
   LogCvmfs(kLogSpooler, kLogVerboseMsg, "Using this S3 Configuration:\n"
-                                        "--> Host: %s\n"
-                                        "--> Port: %s\n"
+                                        "--> Host:       %s\n"
+                                        "--> Port:       %s\n"
                                         "--> Access Key: %s\n"
-                                        "--> Secret Key: %s",
-           host_.c_str(),
-           port_.c_str(),
-           access_key_.c_str(),
-           secret_key_.c_str());
+                                        "--> Secret Key: %s\n"
+                                        "--> Bucket:     %s",
+           worker_context_->host.c_str(),
+           worker_context_->port.c_str(),
+           worker_context_->access_key.c_str(),
+           worker_context_->secret_key.c_str(),
+           worker_context_->bucket.c_str());
 }
 
 
@@ -109,7 +137,7 @@ bool S3Uploader::ParseSpoolerDefinition(
                                   const SpoolerDefinition &spooler_definition) {
   std::vector<std::string>
     config = SplitString(spooler_definition.spooler_configuration, ',');
-  if (config.size() != 3) {
+  if (config.size() != 4) {
     LogCvmfs(kLogSpooler, kLogStderr, "Failed to parse S3 spooler definition "
                                       "string: %s",
              spooler_definition.spooler_configuration.c_str());
@@ -123,10 +151,11 @@ bool S3Uploader::ParseSpoolerDefinition(
     return true;
   }
 
-  host_       = host[0];
-  port_       = (host.size() == 2) ? host[1] : kStandardPort;
-  access_key_ = config[1];
-  secret_key_ = config[2];
+  worker_context_->host       = host[0];
+  worker_context_->port       = (host.size() == 2) ? host[1] : kStandardPort;
+  worker_context_->access_key = config[1];
+  worker_context_->secret_key = config[2];
+  worker_context_->bucket     = config[3];
   return true;
 }
 
@@ -141,10 +170,7 @@ bool S3Uploader::WillHandle(const SpoolerDefinition &spooler_definition) {
 
 
 bool S3Uploader::Initialize() {
-  worker_context_     = new WorkerContext(host_,
-                                          port_,
-                                          access_key_,
-                                          secret_key_);
+  assert (worker_context_);
 
   const unsigned int number_of_cpus = GetNumberOfCpuCores();
   concurrent_workers_ =
