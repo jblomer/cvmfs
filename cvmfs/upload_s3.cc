@@ -10,9 +10,84 @@ using namespace upload;
 
 const std::string S3Uploader::kStandardPort = "80"; // TODO: ????
 
+namespace upload {
+
+class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
+ private:
+  UniquePtr<webstor::WsConnection>  connection_;
+
+ protected:
+  typedef S3Uploader::callback_t callback_t;
+
+ public:
+  struct Parameters {
+    Parameters(const std::string  &local_path,
+               const std::string  &remote_path,
+               const bool          delete_after_upload,
+               const callback_t   *callback) :
+      local_path(local_path), remote_path(remote_path),
+      delete_after_upload(delete_after_upload), callback(callback) {}
+
+    Parameters() : delete_after_upload(false), callback(NULL) {}
+
+    const std::string  local_path;
+    const std::string  remote_path;
+    const bool         delete_after_upload;
+    const callback_t  *callback;
+  };
+
+  struct Results {
+    Results(const std::string  &local_path,
+            const int           return_code,
+            const callback_t   *callback) :
+      local_path(local_path), return_code(return_code), callback(callback) {}
+
+    const std::string  local_path;
+    const int          return_code;
+    const callback_t  *callback;
+  };
+
+ public:
+  typedef Parameters                 expected_data;
+  typedef Results                    returned_data;
+  typedef S3Uploader::WorkerContext  worker_context;
+
+ public:
+  S3UploadWorker(const worker_context *context) {
+    webstor::WsConfig configuration = {};
+
+    configuration.accKey   = context->access_key.c_str();
+    configuration.secKey   = context->secret_key.c_str();
+    configuration.host     = context->host.c_str();
+    configuration.port     = context->port.c_str();
+    configuration.storType = webstor::WST_S3;
+    configuration.isHttps  = false;
+
+    connection_ = new webstor::WsConnection(configuration);
+  }
+
+  void operator()(const Parameters &input) {
+
+  }
+
+  bool Initialize() {
+
+    return true;
+  }
+
+  void TearDown() {
+
+  }
+};
+
+}
+
+//
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+//
+
 S3Uploader::S3Uploader(const SpoolerDefinition &spooler_definition) :
-  AbstractUploader(spooler_definition),
-  connection_(NULL)
+  AbstractUploader(spooler_definition)
 {
   if (! ParseSpoolerDefinition(spooler_definition)) {
     abort();
@@ -66,16 +141,17 @@ bool S3Uploader::WillHandle(const SpoolerDefinition &spooler_definition) {
 
 
 bool S3Uploader::Initialize() {
-  webstor::WsConfig configuration = {};
+  worker_context_     = new WorkerContext(host_,
+                                          port_,
+                                          access_key_,
+                                          secret_key_);
 
-  configuration.accKey   = access_key_.c_str();
-  configuration.secKey   = secret_key_.c_str();
-  configuration.host     = host_.c_str();
-  configuration.port     = port_.c_str();
-  configuration.storType = webstor::WST_S3;
-  configuration.isHttps  = false;
+  const unsigned int number_of_cpus = GetNumberOfCpuCores();
+  concurrent_workers_ =
+    new ConcurrentWorkers<S3UploadWorker>(number_of_cpus * 5,
+                                          number_of_cpus * 400,
+                                          worker_context_.weak_ref());
 
-  connection_ = new webstor::WsConnection(configuration);
   return true;
 }
 
@@ -88,9 +164,11 @@ void S3Uploader::TearDown() {
 void S3Uploader::Upload(const std::string  &local_path,
                         const std::string  &remote_path,
                         const callback_t   *callback) {
-  const bool not_implemented = false;
-  assert (not_implemented);
-
+  concurrent_workers_->Schedule(
+    S3UploadWorker::Parameters(local_path,
+                               remote_path,
+                               true,
+                               callback));
 }
 
 
@@ -98,9 +176,11 @@ void S3Uploader::Upload(const std::string  &local_path,
                         const hash::Any    &content_hash,
                         const std::string  &hash_suffix,
                         const callback_t   *callback) {
-  const bool not_implemented = false;
-  assert (not_implemented);
-
+  concurrent_workers_->Schedule(
+    S3UploadWorker::Parameters(local_path,
+                               "data" + content_hash.MakePath(1,2) + hash_suffix,
+                               false,
+                               callback));
 }
 
 
