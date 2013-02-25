@@ -4,12 +4,15 @@
 
 #include "upload_s3.h"
 
-#include <webstor/wsconn.h>
 #include <cassert>
+#include <webstor/wsconn.h>
+
+#include "util_concurrency.h"
 
 using namespace upload;
 
 const std::string S3Uploader::kStandardPort = "80"; // TODO: ????
+const std::string S3Uploader::kMimeType     = "application/x-cvmfs";
 
 namespace upload {
 
@@ -89,8 +92,11 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
                      mmf.size(),
                      make_public,
                      server_encryption,
-                     "application/x-cvmfs",
+                     S3Uploader::kMimeType.c_str(),
                      &response);
+
+    LogCvmfs(kLogSpooler, kLogVerboseMsg, "S3 etag for %s: %s",
+             input.local_path.c_str(), response.etag.c_str());
 
     master()->JobSuccessful(Results(input.local_path, 0, input.callback));
   }
@@ -136,7 +142,7 @@ S3Uploader::S3Uploader(const SpoolerDefinition &spooler_definition) :
 bool S3Uploader::ParseSpoolerDefinition(
                                   const SpoolerDefinition &spooler_definition) {
   std::vector<std::string>
-    config = SplitString(spooler_definition.spooler_configuration, ',');
+    config = SplitString(spooler_definition.spooler_configuration, '@');
   if (config.size() != 4) {
     LogCvmfs(kLogSpooler, kLogStderr, "Failed to parse S3 spooler definition "
                                       "string: %s",
@@ -178,12 +184,21 @@ bool S3Uploader::Initialize() {
                                           number_of_cpus * 400,
                                           worker_context_.weak_ref());
 
+  if (! concurrent_workers_->Initialize()) {
+    LogCvmfs(kLogSpooler, kLogWarning, "Failed to initialize concurrent "
+                                       "workers for S3Uploader.");
+    return false;
+  }
+
+  int retval = pthread_mutex_init(&synchronous_connection_mutex_, NULL);
+  assert (retval == 0);
+
   return true;
 }
 
 
 void S3Uploader::TearDown() {
-
+  pthread_mutex_destroy(&synchronous_connection_mutex_);
 }
 
 
@@ -204,38 +219,71 @@ void S3Uploader::Upload(const std::string  &local_path,
                         const callback_t   *callback) {
   concurrent_workers_->Schedule(
     S3UploadWorker::Parameters(local_path,
-                               "data" + content_hash.MakePath(1,2) + hash_suffix,
+                               MakeCasPath(content_hash, hash_suffix),
                                false,
                                callback));
 }
 
 
 bool S3Uploader::Remove(const std::string &file_to_delete) {
-  const bool not_implemented = false;
-  assert (not_implemented);
+  MutexLockGuard lock(synchronous_connection_mutex_);
 
-  return false;
+  webstor::WsConnection* connection = GetSynchronousS3Connection();
+  assert(connection);
+
+  webstor::WsDelResponse response;
+  connection->del(worker_context_->bucket.c_str(),
+                  file_to_delete.c_str(),
+                  &response);
+
+  return true;
 }
 
 
 bool S3Uploader::Peek(const std::string &path) const {
-  const bool not_implemented = false;
-  assert (not_implemented);
+  MutexLockGuard lock(synchronous_connection_mutex_);
 
-  return false;
+  webstor::WsConnection* connection = GetSynchronousS3Connection();
+  assert(connection);
+
+  webstor::WsGetResponse response;
+  connection->get(worker_context_->bucket.c_str(),
+                  path.c_str(),
+                  NULL,
+                  0,
+                  &response);
+
+  return ! response.etag.empty();
 }
 
 
 void S3Uploader::WaitForUpload() const {
-  const bool not_implemented = false;
-  assert (not_implemented);
-
+  AbstractUploader::WaitForUpload();
+  concurrent_workers_->WaitForEmptyQueue();
 }
 
 
 unsigned int S3Uploader::GetNumberOfErrors() const {
-  const bool not_implemented = false;
-  assert (not_implemented);
+  return concurrent_workers_->GetNumberOfFailedJobs();
+}
 
-  return 0;
+
+webstor::WsConnection* S3Uploader::GetSynchronousS3Connection() const {
+  if (!synchronous_connection_) {
+    LogCvmfs(kLogSpooler, kLogVerboseMsg, "lazily creating synchronous S3 "
+                                          "connection.");
+
+    webstor::WsConfig configuration = {};
+
+    configuration.accKey   = worker_context_->access_key.c_str();
+    configuration.secKey   = worker_context_->secret_key.c_str();
+    configuration.host     = worker_context_->host.c_str();
+    configuration.port     = worker_context_->port.c_str();
+    configuration.storType = webstor::WST_S3;
+    configuration.isHttps  = false;
+
+    synchronous_connection_ = new webstor::WsConnection(configuration);
+  }
+
+  return synchronous_connection_.weak_ref();
 }

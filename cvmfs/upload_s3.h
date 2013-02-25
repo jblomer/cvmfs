@@ -6,9 +6,14 @@
 #define CVMFS_UPLOAD_S3_H_
 
 #include <string>
+#include <pthread.h>
 
 #include "upload_facility.h"
 #include "util.h"
+
+namespace webstor {
+  class WsConnection;
+}
 
 namespace upload {
 
@@ -17,6 +22,7 @@ class S3UploadWorker;
 class S3Uploader : public AbstractUploader {
  protected:
   const static std::string kStandardPort;
+  const static std::string kMimeType;
 
   struct WorkerContext {
     std::string host;
@@ -55,12 +61,16 @@ class S3Uploader : public AbstractUploader {
 
  protected:
   bool ParseSpoolerDefinition(const SpoolerDefinition &spooler_definition);
+  webstor::WsConnection* GetSynchronousS3Connection() const;
 
  private:
   friend class S3UploadWorker;
 
   UniquePtr<WorkerContext>                       worker_context_;
   UniquePtr<ConcurrentWorkers<S3UploadWorker> >  concurrent_workers_;
+
+  mutable UniquePtr<webstor::WsConnection>       synchronous_connection_;
+  mutable pthread_mutex_t                        synchronous_connection_mutex_;
 };
 
 }
