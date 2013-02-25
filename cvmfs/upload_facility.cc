@@ -48,3 +48,10 @@ void AbstractUploader::Respond(const callback_t  *callback,
   (*callback)(result);
   delete callback;
 }
+
+
+const std::string AbstractUploader::MakeCasPath(
+                                        const hash::Any    &content_hash,
+                                        const std::string  &hash_suffix) const {
+  return "data" + content_hash.MakePath(1,2) + hash_suffix;
+}

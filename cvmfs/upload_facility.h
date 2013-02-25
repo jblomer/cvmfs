@@ -115,6 +115,15 @@ class AbstractUploader : public PolymorphicConstruction<AbstractUploader,
                const int return_code,
                const std::string local_path);
 
+  /**
+   * Transforms a content hash into a usable remote CAS path
+   *
+   * @param content_hash  the hash to be transformed into a CAS path
+   * @return              a final remote path to be used in backend storage
+   */
+  virtual const std::string MakeCasPath(const hash::Any    &content_hash,
+                                        const std::string  &hash_suffix) const;
+
   const SpoolerDefinition& spooler_definition() const {
     return spooler_definition_;
   }

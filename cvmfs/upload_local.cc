@@ -68,8 +68,7 @@ void LocalUploader::Upload(const std::string  &local_path,
                            const hash::Any    &content_hash,
                            const std::string  &hash_suffix,
                            const callback_t   *callback) {
-  const int retcode = Move(local_path,
-                           "data" + content_hash.MakePath(1,2) + hash_suffix);
+  const int retcode = Move(local_path, MakeCasPath(content_hash, hash_suffix));
   if (retcode != 0) {
     atomic_inc32(&copy_errors_);
   }
