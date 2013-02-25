@@ -484,13 +484,16 @@ check_upstream_type() {
 is_local_upstream() {
   local upstream=$1
   check_upstream_type $upstream "local"
-  return $?
 }
 
 is_riak_upstream() {
   local upstream=$1
   check_upstream_type $upstream "riak"
-  return $?
+}
+
+is_s3_upstream() {
+  local upstream=$1
+  check_upstream_type $upstream "s3"
 }
 
 get_upstream_path() {
@@ -738,7 +741,9 @@ mkfs() {
   /sbin/modprobe -q aufs || test -d /sys/fs/aufs || die "aufs kernel module missing"
   [ -x /usr/bin/cvmfs2 ] || die "cvmfs client missing"
   cat /proc/mounts | grep -q "^/etc/auto.cvmfs /cvmfs " && die "Autofs on /cvmfs has to be disabled"
-  [ -d /etc/${APACHE_CONF} ] && ${SERVICE_BIN} ${APACHE_SERVICE} status >/dev/null || die "Apache must be installed and running"
+  if is_local_upstream $upstream && ( [ ! -d /etc/${APACHE_CONF} ] || ! ${SERVICE_BIN} ${APACHE_SERVICE} status >/dev/null ); then
+    die "Apache must be installed and running"
+  fi
   lower_hardlink_restrictions
   ensure_enabled_apache_modules
 
@@ -806,11 +811,6 @@ Alias /cvmfs/$name ${repository_dir}
     ExpiresByType application/x-cvmfs "access plus 1 minutes"
 </Directory>
 EOF
-  elif is_riak_upstream $upstream; then
-    cat > /etc/cvmfs/repositories.d/${name}/riak.conf << EOF
-# Created by cvmfs_server.
-CVMFS_RIAK_URLS=$riak_urls
-EOF
   fi
 
   cat > /etc/cvmfs/repositories.d/${name}/client.conf << EOF
@@ -846,8 +846,8 @@ EOF
   chown -R $cvmfs_user /cvmfs/$name $spool_dir
   if is_local_upstream $upstream; then
     create_repository_skeleton $repository_dir $cvmfs_user > /dev/null
+    reload_apache > /dev/null
   fi
-  reload_apache > /dev/null
   echo "done"
 
   local spooler_definition="${upstream}"
@@ -1435,6 +1435,7 @@ publish() {
         1)
           # in case something breaks we are provided with a GDB prompt.
           swissknife="gdb --quiet --eval-command=run --eval-command=quit --args cvmfs_swissknife_debug"
+          #swissknife="valgrind cvmfs_swissknife_debug"
         ;;
         2)
           # attach gdb and provide a prompt WITHOUT actual running the program

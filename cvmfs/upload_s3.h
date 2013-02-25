@@ -32,6 +32,17 @@ class S3Uploader : public AbstractUploader {
     std::string bucket;
   };
 
+  struct WorkerResults {
+    WorkerResults(const std::string  &local_path,
+                  const int           return_code,
+                  const callback_t   *callback) :
+      local_path(local_path), return_code(return_code), callback(callback) {}
+
+    const std::string  local_path;
+    const int          return_code;
+    const callback_t  *callback;
+  };
+
  public:
   // PolymorphicConstruction methods
   S3Uploader(const SpoolerDefinition &spooler_definition);
@@ -62,6 +73,8 @@ class S3Uploader : public AbstractUploader {
  protected:
   bool ParseSpoolerDefinition(const SpoolerDefinition &spooler_definition);
   webstor::WsConnection* GetSynchronousS3Connection() const;
+
+  void UploadWorkerCallback(const WorkerResults &results);
 
  private:
   friend class S3UploadWorker;

@@ -41,20 +41,9 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
     const callback_t  *callback;
   };
 
-  struct Results {
-    Results(const std::string  &local_path,
-            const int           return_code,
-            const callback_t   *callback) :
-      local_path(local_path), return_code(return_code), callback(callback) {}
-
-    const std::string  local_path;
-    const int          return_code;
-    const callback_t  *callback;
-  };
-
  public:
   typedef Parameters                 expected_data;
-  typedef Results                    returned_data;
+  typedef S3Uploader::WorkerResults  returned_data;
   typedef S3Uploader::WorkerContext  worker_context;
 
  public:
@@ -81,7 +70,10 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
     if (! mmf.Map()) {
       LogCvmfs(kLogSpooler, kLogStderr, "Failed to upload %s",
                input.local_path.c_str());
-      master()->JobFailed(Results(input.local_path, 1, input.callback));
+      const S3Uploader::WorkerResults results(input.local_path,
+                                              1,
+                                              input.callback);
+      master()->JobFailed(results);
       return;
     }
 
@@ -98,7 +90,14 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
     LogCvmfs(kLogSpooler, kLogVerboseMsg, "S3 etag for %s: %s",
              input.local_path.c_str(), response.etag.c_str());
 
-    master()->JobSuccessful(Results(input.local_path, 0, input.callback));
+    if (input.delete_after_upload) {
+      unlink(input.local_path.c_str());
+    }
+
+    const S3Uploader::WorkerResults results(input.local_path,
+                                            0,
+                                            input.callback);
+    master()->JobSuccessful(results);
   }
 
   bool Initialize() {
@@ -178,6 +177,9 @@ bool S3Uploader::WillHandle(const SpoolerDefinition &spooler_definition) {
 bool S3Uploader::Initialize() {
   assert (worker_context_);
 
+  int retval = pthread_mutex_init(&synchronous_connection_mutex_, NULL);
+  assert (retval == 0);
+
   const unsigned int number_of_cpus = GetNumberOfCpuCores();
   concurrent_workers_ =
     new ConcurrentWorkers<S3UploadWorker>(number_of_cpus * 5,
@@ -190,8 +192,7 @@ bool S3Uploader::Initialize() {
     return false;
   }
 
-  int retval = pthread_mutex_init(&synchronous_connection_mutex_, NULL);
-  assert (retval == 0);
+  concurrent_workers_->RegisterListener(&S3Uploader::UploadWorkerCallback, this);
 
   return true;
 }
@@ -246,6 +247,8 @@ bool S3Uploader::Peek(const std::string &path) const {
   webstor::WsConnection* connection = GetSynchronousS3Connection();
   assert(connection);
 
+  // TODO: there might be a better way to peek for a file in the S3 API
+  //       unfortunately webstor only exposes "get"
   webstor::WsGetResponse response;
   connection->get(worker_context_->bucket.c_str(),
                   path.c_str(),
@@ -254,6 +257,11 @@ bool S3Uploader::Peek(const std::string &path) const {
                   &response);
 
   return ! response.etag.empty();
+}
+
+
+void S3Uploader::UploadWorkerCallback(const WorkerResults &results) {
+  Respond(results.callback, results.return_code, results.local_path);
 }
 
 
