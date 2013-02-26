@@ -576,8 +576,8 @@ class ConcurrentWorkers : public Observable<typename WorkerT::returned_data> {
   const size_t             number_of_workers_;    //!< number of concurrent
                                                   //!<  worker threads
   const size_t             maximal_queue_length_;
-  const size_t             desired_free_slots_;   //!< Schedule() blocks until
-                                                  //!<  xx slots are available
+  const size_t             queue_drainout_threshold_; //!< Schedule() blocks until
+                                                      //!<  queue.size() < xx
   const worker_context_t  *worker_context_;       //!< the WorkerT defined context
   const RunBinding         thread_context_;       //!< the thread context passed
                                                   //!<  to newly spawned threads

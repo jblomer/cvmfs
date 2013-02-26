@@ -112,17 +112,17 @@ ConcurrentWorkers<WorkerT>::ConcurrentWorkers(
           ConcurrentWorkers<WorkerT>::worker_context_t *worker_context) :
   number_of_workers_(number_of_workers),
   maximal_queue_length_(maximal_queue_length),
-  desired_free_slots_(maximal_queue_length / 2 + 1), // TODO: consider to remove
-                                                     //       this magic number
+  queue_drainout_threshold_(maximal_queue_length / 2 + 1),
   worker_context_(worker_context),
   thread_context_(this, worker_context_),
   initialized_(false),
   running_(false),
   workers_started_(0)
 {
-  assert (maximal_queue_length_ >= number_of_workers_);
-  assert (desired_free_slots_   >  0);
-  assert (number_of_workers     >  0);
+  assert (maximal_queue_length_       >= number_of_workers_);
+  assert (queue_drainout_threshold_   <= maximal_queue_length_);
+  assert (queue_drainout_threshold_   >  0);
+  assert (number_of_workers           >  0);
 
   atomic_init32(&jobs_pending_);
   atomic_init32(&jobs_failed_);
@@ -345,7 +345,7 @@ typename ConcurrentWorkers<WorkerT>::Job ConcurrentWorkers<WorkerT>::Acquire() {
   job_queue_.pop();
 
   // signal the Scheduler that there is a fair amount of free space now
-  if (job_queue_.size() < desired_free_slots_) {
+  if (job_queue_.size() < queue_drainout_threshold_) {
     pthread_cond_broadcast(&job_queue_cond_not_full_);
   }
 

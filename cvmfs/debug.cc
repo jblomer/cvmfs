@@ -3,36 +3,88 @@
 
 #include "upload_spooler_definition.h"
 #include "upload_facility.h"
+#include "upload_file_processor.h"
+#include "upload_file_chunker.h"
 #include "util.h"
 
 using namespace upload;
 
+UniquePtr<ConcurrentWorkers<FileProcessor> > concurrent_processing;
+
+void MyCallback(const FileProcessor::Results &data) {
+
+}
+
+void Schedule(const std::string &path) {
+  const FileProcessor::Parameters params(path, true);
+  concurrent_processing->Schedule(params);
+}
+
+void Recurse(const std::string &dir_path) {
+  DIR *dir;
+  struct dirent *ent;
+  dir = opendir(dir_path.c_str());
+  assert (dir != NULL);
+
+  /* print all the files and directories within directory */
+  while ((ent = readdir(dir)) != NULL) {
+    const std::string path = dir_path + "/" + ent->d_name;
+
+    if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) {
+      continue;
+    }
+
+    if (ent->d_type & DT_DIR) {
+      Recurse(path);
+    } else {
+      Schedule(path);
+    }
+  }
+  closedir(dir);
+}
 
 int main() {
 
-  SpoolerDefinition sd("s3,/tmp,olhw-s3.cern.ch:5080@C6FA083F94DDCB51B95A@eHruFhsc6MVIptQ1uunMMhVneZ0AAAE8lN3LUm8W@cvmfs");
+  // SpoolerDefinition sd("s3,/ramdisk,10.40.53.157:5080@C6FA083F94DDCB51B95A@eHruFhsc6MVIptQ1uunMMhVneZ0AAAE8lN3LUm8W@cvmfs",
+  //                      true, 4000000, 8000000, 16000000);
+  // SpoolerDefinition sd("riak,/ramdisk,http://cernvmbl005:8098/riak/cvmfs@http://cernvmbl006:8098/riak/cvmfs@http://cernvmbl007:8098/riak/cvmfs@http://cernvmbl008:8098/riak/cvmfs@http://cernvmbl009:8098/riak/cvmfs",
+  //                      true, 4000000, 8000000, 16000000);
+  SpoolerDefinition sd("local,/ramdisk/data/txn,/ramdisk/",
+                       true, 4000000, 8000000, 16000000);
+
   assert (sd.IsValid());
+  UniquePtr<AbstractUploader> uploader;
+  uploader = AbstractUploader::Construct(sd);
+  if (!uploader) {
+    std::cout << "failed to init upload" << std::endl;
+    return false;
+  }
 
-  UniquePtr<AbstractUploader> upl(AbstractUploader::Construct(sd));
-  assert (upl);
+  UniquePtr<FileProcessor::worker_context> concurrent_processing_context;
+  concurrent_processing_context =
+    new FileProcessor::worker_context(sd.temporary_path,
+                                      sd.use_file_chunking,
+                                      uploader.weak_ref());
 
-  upl->Upload("Makefile", "data/Makefile");
-  upl->Upload("cmake_install.cmake", "data/cmake_install.cmake");
-  upl->Upload("CMakeCache.txt", "data/CMakeCache.txt");
-  upl->Upload("install_manifest.txt", "data/install_manifest.txt");
-  upl->Upload("cvmfs_config.h", "data/cvmfs_config.h");
-  // upl->Upload("/mnt/atlas-condb/cond12_data.000002.lar.COND._0008.pool.root", "data/cond12_data.000002.lar.COND._0008.pool.root");
-  // upl->Upload("/mnt/atlas-condb/cond12_data.000002.lar.COND._0010.pool.root", "data/cond12_data.000002.lar.COND._0010.pool.root");
+  const unsigned int number_of_cpus = GetNumberOfCpuCores();
+  concurrent_processing =
+    new ConcurrentWorkers<FileProcessor>(number_of_cpus,
+                                         number_of_cpus * 500, // TODO: magic number (?)
+                                         concurrent_processing_context.weak_ref());
 
-  upl->WaitForUpload();
+  assert(concurrent_processing);
+  concurrent_processing->RegisterListener(&MyCallback);
 
-  upl->Remove("data/cvmfs_config.h");
-  upl->Remove("data/install_manifest.txt");
+  // initialize the file processor environment
+  if (! concurrent_processing->Initialize()) {
+    std::cout << "failed to init processing" << std::endl;
+    return false;
+  }
 
-  bool res = upl->Peek("data/CMakeCache.txt");
+  Recurse("/mnt/benchmark_repo/extracted");
 
-  std::cout << (res ? "jep" : "nope") << std::endl;
+  concurrent_processing->WaitForEmptyQueue();
+  uploader->WaitForUpload();
 
   return 0;
-
 }
