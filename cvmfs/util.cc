@@ -259,9 +259,15 @@ void SendMsg2Socket(const int fd, const string &msg) {
 bool SwitchCredentials(const uid_t uid, const gid_t gid,
                        const bool temporarily)
 {
-  int retval;
+  LogCvmfs(kLogCvmfs, kLogDebug, "current credentials uid %d gid %d "
+           "euid %d egid %d, switching to %d %d (temp: %d)", 
+           getuid(), getgid(), geteuid(), getegid(), uid, gid, temporarily);
+  int retval = 0;
   if (temporarily) {
-    retval = setegid(gid) || seteuid(uid);
+    if (gid != getegid())
+      retval = setegid(gid);
+    if ((retval == 0) && (uid != geteuid()))
+      retval = seteuid(uid);
   } else {
     // If effective uid is not root, we must first gain root access back
     if ((getuid() == 0) && (getuid() != geteuid())) {
@@ -271,6 +277,8 @@ bool SwitchCredentials(const uid_t uid, const gid_t gid,
     }
     retval = setgid(gid) || setuid(uid);
   }
+  LogCvmfs(kLogCvmfs, kLogDebug, "switch credentials result %d (%d)", 
+           retval, errno); 
   return retval == 0;
 }
 
@@ -611,6 +619,15 @@ bool HasPrefix(const string &str, const string &prefix,
   }
   return true;
 }
+  
+  
+bool IsNumeric(const std::string &str) {
+  for (unsigned i = 0; i < str.length(); ++i) {
+    if ((str[i] < '0') || (str[i] > '9'))
+      return false;
+  }
+  return true;
+}
 
 
 vector<string> SplitString(const string &str,
@@ -817,11 +834,11 @@ void Daemonize() {
 }
 
 
-/**
- * Opens /bin/sh and provides file descriptors to write into stdin and
- * read from stdout.  Quit shell simply by closing stderr, stdout, and stdin.
- */
-bool Shell(int *fd_stdin, int *fd_stdout, int *fd_stderr) {
+bool ExecuteBinary(      int                       *fd_stdin,
+                         int                       *fd_stdout,
+                         int                       *fd_stderr,
+                   const std::string               &binary_path,
+                   const std::vector<std::string>  &argv) {
   int pipe_stdin[2];
   int pipe_stdout[2];
   int pipe_stderr[2];
@@ -838,7 +855,8 @@ bool Shell(int *fd_stdin, int *fd_stdout, int *fd_stderr) {
   map_fildes[pipe_stdout[1]] = 1;  // Writing end of pipe_stdout
   map_fildes[pipe_stderr[1]] = 2;  // Writing end of pipe_stderr
   vector<string> cmd_line;
-  cmd_line.push_back("/bin/sh");
+  cmd_line.push_back(binary_path);
+  cmd_line.insert(cmd_line.end(), argv.begin(), argv.end());
 
   if (!ManagedExec(cmd_line, preserve_fildes, map_fildes)) {
     ClosePipe(pipe_stdin);
@@ -854,6 +872,15 @@ bool Shell(int *fd_stdin, int *fd_stdout, int *fd_stderr) {
   *fd_stdout = pipe_stdout[0];
   *fd_stderr = pipe_stderr[0];
   return true;
+}
+
+
+/**
+ * Opens /bin/sh and provides file descriptors to write into stdin and
+ * read from stdout.  Quit shell simply by closing stderr, stdout, and stdin.
+ */
+bool Shell(int *fd_stdin, int *fd_stdout, int *fd_stderr) {
+  return ExecuteBinary(fd_stdin, fd_stdout, fd_stderr, "/bin/sh");
 }
 
 

@@ -17,12 +17,13 @@ using namespace std;  // NOLINT
 
 namespace catalog {
 
-InodeRevisionAnnotation::InodeRevisionAnnotation(const unsigned inode_width) {
-  revision_annotation_ = 0;
+InodeGenerationAnnotation::InodeGenerationAnnotation(const unsigned inode_width) 
+{
+  generation_annotation_ = 0;
   inode_width_ = inode_width;
   switch (inode_width_) {
     case 32:
-      num_protected_bits_ = 24;
+      num_protected_bits_ = 26;
       break;
     case 64:
       num_protected_bits_ = 32;
@@ -33,22 +34,30 @@ InodeRevisionAnnotation::InodeRevisionAnnotation(const unsigned inode_width) {
 }
 
 
-void InodeRevisionAnnotation::SetRevision(const uint64_t new_revision) {
-  const unsigned revision_width = inode_width_ - num_protected_bits_;
-  const uint64_t revision_cut = new_revision % (uint64_t(1) << revision_width);
-  revision_annotation_ = revision_cut << num_protected_bits_;
+void InodeGenerationAnnotation::SetGeneration(const uint64_t new_generation) {
+  LogCvmfs(kLogCatalog, kLogDebug, "new inode generation: %"PRIu64, 
+           new_generation);
+  
+  const unsigned generation_width = inode_width_ - num_protected_bits_;
+  const uint64_t generation_cut = 
+    new_generation % (uint64_t(1) << generation_width);
+  generation_annotation_ = generation_cut << num_protected_bits_;
 }
 
 
 AbstractCatalogManager::AbstractCatalogManager() {
   inode_gauge_ = AbstractCatalogManager::kInodeOffset;
+  revision_cache_ = 0;
   inode_annotation_ = NULL;
+  incarnation_ = 0;
   rwlock_ =
     reinterpret_cast<pthread_rwlock_t *>(smalloc(sizeof(pthread_rwlock_t)));
   int retval = pthread_rwlock_init(rwlock_, NULL);
   assert(retval == 0);
   retval = pthread_key_create(&pkey_sqlitemem_, NULL);
   assert(retval == 0);
+  disable_locks_ = false;
+  remount_listener_ = NULL;
 }
 
 
@@ -82,10 +91,24 @@ bool AbstractCatalogManager::Init() {
   }
 
   if (attached && inode_annotation_) {
-    inode_annotation_->SetRevision(GetRootCatalog()->GetRevision());
+    inode_annotation_->SetGeneration(revision_cache_ + incarnation_);
   }
 
   return attached;
+}
+  
+  
+void AbstractCatalogManager::SetIncarnation(const uint64_t new_incarnation) { 
+  WriteLock();
+  incarnation_ = new_incarnation;
+  if (inode_annotation_)
+    inode_annotation_->SetGeneration(revision_cache_ + incarnation_);
+  for (CatalogList::const_iterator i = catalogs_.begin(),
+       iEnd = catalogs_.end(); i != iEnd; ++i)
+  {
+    (*i)->generation_ = revision_cache_ + incarnation_;
+  }
+  Unlock();
 }
 
 
@@ -101,6 +124,12 @@ LoadError AbstractCatalogManager::Remount(const bool dry_run) {
     return LoadCatalog(PathString("", 0), hash::Any(), NULL);
 
   WriteLock();
+  if (remount_listener_) {
+    disable_locks_ = true;
+    remount_listener_->BeforeRemount(this);
+    disable_locks_ = false;
+  }
+  
   string catalog_path;
   const LoadError load_error = LoadCatalog(PathString("", 0), hash::Any(),
                                            &catalog_path);
@@ -114,7 +143,7 @@ LoadError AbstractCatalogManager::Remount(const bool dry_run) {
     assert(retval);
 
     if (inode_annotation_) {
-      inode_annotation_->SetRevision(new_root->GetRevision());
+      inode_annotation_->SetGeneration(revision_cache_ + incarnation_);
     }
   }
   Unlock();
@@ -137,6 +166,12 @@ bool AbstractCatalogManager::LookupInode(const inode_t inode,
   EnforceSqliteMemLimit();
   ReadLock();
   bool found = false;
+  
+  // Don't lookup ancient inodes
+  if (inode_annotation_ && !inode_annotation_->ValidInode(inode)) {
+    Unlock();
+    return false;
+  }
 
   // Get corresponding catalog
   Catalog *catalog = NULL;
@@ -382,7 +417,7 @@ bool AbstractCatalogManager::ListingStat(const PathString &path,
 
 uint64_t AbstractCatalogManager::GetRevision() const {
   ReadLock();
-  const uint64_t revision = GetRootCatalog()->GetRevision();
+  const uint64_t revision = revision_cache_;
   Unlock();
   return revision;
 }
@@ -606,6 +641,11 @@ bool AbstractCatalogManager::AttachCatalog(const string &db_path,
     return false;
   }
 
+  // The revision of the catalog tree is given by the root catalog revision
+  if (catalogs_.empty())
+    revision_cache_ = new_catalog->GetRevision();
+  new_catalog->generation_ = revision_cache_ + incarnation_;
+  
   catalogs_.push_back(new_catalog);
   ActivateCatalog(new_catalog);
   return true;

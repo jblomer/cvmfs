@@ -76,6 +76,7 @@ uint64_t String2Uint64(const std::string &value);
 void String2Uint64Pair(const std::string &value, uint64_t *a, uint64_t *b);
 bool HasPrefix(const std::string &str, const std::string &prefix,
                const bool ignore_case);
+bool IsNumeric(const std::string &str);
 
 std::vector<std::string> SplitString(const std::string &str,
 	                                   const char delim,
@@ -97,6 +98,11 @@ void BlockSignal(int signum);
 void WaitForSignal(int signum);
 void Daemonize();
 bool Shell(int *pipe_stdin, int *pipe_stdout, int *pipe_stderr);
+bool ExecuteBinary(      int                       *fd_stdin,
+                         int                       *fd_stdout,
+                         int                       *fd_stderr,
+                   const std::string               &binary_path,
+                   const std::vector<std::string>  &argv = std::vector<std::string>());
 bool ManagedExec(const std::vector<std::string> &command_line,
                  const std::vector<int> &preserve_fildes,
                  const std::map<int, int> &map_fildes);
