@@ -37,6 +37,7 @@ class S3Uploader : public AbstractUploader {
                   const int           return_code,
                   const callback_t   *callback) :
       local_path(local_path), return_code(return_code), callback(callback) {}
+    WorkerResults() : return_code(-1), callback(NULL) {}
 
     const std::string  local_path;
     const int          return_code;
