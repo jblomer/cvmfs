@@ -84,6 +84,9 @@ class InodeGenerationAnnotation : public InodeAnnotation {
     return raw_inode | generation_annotation_;
   }
   void SetGeneration(const uint64_t new_generation);
+  void CheckForOverflow(const uint64_t new_generation, 
+                        const uint64_t initial_generation,
+                        uint32_t *overflow_counter);
 
  private:
   unsigned inode_width_;
@@ -147,6 +150,11 @@ class AbstractCatalogManager {
   }
   bool ListingStat(const PathString &path, StatEntryList *listing);
 
+  /**
+   * Don't use.  Only for the CwdBuffer.
+   */
+  bool Path2InodeUnprotected(const PathString &path, inode_t *inode);
+  
   void SetIncarnation(const uint64_t new_incarnation);
   void RegisterRemountListener(RemountListener *listener) {
     WriteLock();
@@ -216,20 +224,14 @@ class AbstractCatalogManager {
   Catalog *FindCatalog(const PathString &path) const;
 
   inline void ReadLock() const {
-    if (disable_locks_)
-      return;
     int retval = pthread_rwlock_rdlock(rwlock_);
     assert(retval == 0);
   }
   inline void WriteLock() const {
-    if (disable_locks_)
-      return;
     int retval = pthread_rwlock_wrlock(rwlock_);
     assert(retval == 0);
   }
   inline void Unlock() const {
-    if (disable_locks_)
-      return;
     int retval = pthread_rwlock_unlock(rwlock_);
     assert(retval == 0);
   }
@@ -249,8 +251,6 @@ class AbstractCatalogManager {
   pthread_rwlock_t *rwlock_;
   Statistics statistics_;
   pthread_key_t pkey_sqlitemem_;
-  // Avoid double locking when we know the manager is locked
-  bool disable_locks_;
   RemountListener *remount_listener_;
 
   std::string PrintHierarchyRecursively(const Catalog *catalog,

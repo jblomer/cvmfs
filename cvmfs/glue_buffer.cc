@@ -12,14 +12,23 @@
 #include <unistd.h>
 #include <limits.h>
 #include <errno.h>
+#ifdef __APPLE__
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <libproc.h>
+#endif
 
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
 
+#include <vector>
+#include <string>
+
 #include "platform.h"
 #include "smalloc.h"
 #include "logging.h"
+#include "util.h"
 
 using namespace std;  // NOLINT
 
@@ -38,7 +47,7 @@ GlueBuffer::GlueBuffer(const unsigned size) {
   size_ = size;
   buffer_ = new BufferEntry[size_];
   atomic_init64(&buffer_pos_);
-  
+  cwd_buffer_ = NULL;
   InitLock();
 }
 
@@ -54,6 +63,7 @@ void GlueBuffer::CopyFrom(const GlueBuffer &other) {
     buffer_[i] = other.buffer_[i];
   buffer_pos_ = other.buffer_pos_;
   statistics_ = other.statistics_;
+  cwd_buffer_ = other.cwd_buffer_;
 }
 
 
@@ -127,8 +137,19 @@ bool GlueBuffer::ConstructPath(const unsigned buffer_idx, PathString *path) {
       break;
     }
   }
-  if (parent_idx < 0)
+  if (parent_idx < 0) {
+    if (cwd_buffer_) {
+      LogCvmfs(kLogGlueBuffer, kLogDebug,  "jumping from glue buffer to "
+               "cwd buffer, inode: %u", needle_inode);
+      bool retval = cwd_buffer_->Find(needle_inode, path);
+      if (retval) {
+        atomic_inc64(&statistics_.num_jump_hits);
+        return true;
+      }
+    }
+    atomic_inc64(&statistics_.num_jump_misses);
     return false;
+  }
   
   bool retval = ConstructPath(parent_idx, path);
   path->Append("/", 1);
@@ -216,6 +237,9 @@ CwdBuffer::CwdBuffer(const CwdBuffer &other) {
 
 
 CwdBuffer &CwdBuffer::operator= (const CwdBuffer &other) {
+  if (&other == this)
+    return *this;
+  
   assert(other.version_ == kVersion);
   CopyFrom(other);
   return *this;
@@ -233,14 +257,61 @@ vector<PathString> CwdBuffer::GatherCwds() {
   gid_t save_gid = getegid();
   
   Lock();
-  bool retval = SwitchCredentials(0, save_gid, true);
+  int retval = SwitchCredentials(0, save_gid, true);
   if (!retval) {
     LogCvmfs(kLogGlueBuffer, kLogDebug, 
              "failed to switch to root for gathering cwds");
   }
   
   vector<PathString> result;
+#ifdef __APPLE__
+  // TODO: list cwds without stating them
+  // List PIDs
+/*  vector<pid_t> pids;
+  int buf_size = proc_listpids(PROC_ALL_PIDS, 0, NULL, 0);
+  if (buf_size <= 0) {
+    LogCvmfs(kLogGlueBuffer, kLogDebug | kLogSyslog, 
+             "failed to gather pid buffer (%d)", errno);
+  }
+  int *all_pids = static_cast<pid_t *>(smalloc(buf_size));
+  buf_size = proc_listpids(PROC_ALL_PIDS, 0, all_pids, buf_size);
+  if (buf_size <= 0) {
+    LogCvmfs(kLogGlueBuffer, kLogDebug | kLogSyslog, 
+             "failed to gather pids (%d)", errno);
+  } else {
+    int num_procs = buf_size / sizeof(pid_t);
+    for (int i = 0; i < num_procs; ++i)
+      pids.push_back(all_pids[i]);
+  }
+  free(all_pids);
   
+  // Gather cwd for pids
+  // Blocks on cvmfs because it also tries to get the stat information
+  for (unsigned i = 0; i < pids.size(); ++i) {
+    struct proc_vnodepathinfo vpi;
+    buf_size = proc_pidinfo(pids[i], PROC_PIDVNODEPATHINFO, 0, 
+                            &vpi, sizeof(vpi));
+    if (buf_size < (int)sizeof(vpi)) {
+      LogCvmfs(kLogGlueBuffer, kLogDebug, "failed to gather cwd for "
+               "pid %d (%d)", pids[i], errno);
+    } else {
+      if (!vpi.pvi_cdir.vip_path[0]) {
+        LogCvmfs(kLogGlueBuffer, kLogDebug, "no cwd for pid %d (%d)", pids[i]);
+        continue;
+      }
+      string cwd(vpi.pvi_cdir.vip_path);
+      LogCvmfs(kLogGlueBuffer, kLogDebug, "cwd of pid %d is %s", 
+               pids[i], cwd.c_str());
+      if (HasPrefix(cwd, mountpoint_ + "/", false)) {
+        string relative_cwd = cwd.substr(mountpoint_.length());
+        result.push_back(PathString(relative_cwd));
+        while ((relative_cwd = GetParentPath(relative_cwd)) != "") {
+          result.push_back(PathString(relative_cwd));
+        }
+      }
+    }
+  }*/
+#else
   DIR *dirp = opendir("/proc");
   if (!dirp) {
     LogCvmfs(kLogGlueBuffer, kLogDebug | kLogSyslog, "failed to open /proc");
@@ -275,6 +346,8 @@ vector<PathString> CwdBuffer::GatherCwds() {
     }
   }
   closedir(dirp);
+#endif
+  
   if (!result.empty())
     result.push_back(PathString());
   
@@ -345,10 +418,9 @@ bool CwdBuffer::Find(const uint64_t inode, PathString *path) {
 void CwdBuffer::BeforeRemount(catalog::AbstractCatalogManager *source) {
   vector<PathString> open_cwds = GatherCwds();
   for (unsigned i = 0; i < open_cwds.size(); ++i) {
-    catalog::DirectoryEntry dirent;
-    bool retval = source->LookupPath(open_cwds[i], catalog::kLookupSole,
-                                     &dirent);
+    catalog::inode_t inode;
+    bool retval = source->Path2InodeUnprotected(open_cwds[i], &inode);
     if (retval)
-      Add(dirent.inode(), open_cwds[i]);
+      Add(inode, open_cwds[i]);
   }
 }

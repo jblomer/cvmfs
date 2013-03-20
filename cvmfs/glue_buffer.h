@@ -28,6 +28,12 @@
 #ifndef CVMFS_GLUE_BUFFER_H_
 #define CVMFS_GLUE_BUFFER_H_
 
+namespace catalog {
+  class AbstractCatalogManager;
+}
+
+
+class CwdBuffer;
 class GlueBuffer {
  public:
   struct Statistics {
@@ -35,16 +41,22 @@ class GlueBuffer {
       atomic_init64(&num_ancient_hits);
       atomic_init64(&num_ancient_misses);
       atomic_init64(&num_busywait_cycles);
+      atomic_init64(&num_jump_hits);
+      atomic_init64(&num_jump_misses);
     }
     std::string Print() {
       return 
         "ancient(hits): " + StringifyInt(atomic_read64(&num_ancient_hits)) +
         "  ancient(misses): " + StringifyInt(atomic_read64(&num_ancient_misses)) +
+        "  cwd-jump(hits): " + StringifyInt(atomic_read64(&num_jump_hits)) +
+        "  cwd-jump(misses): " + StringifyInt(atomic_read64(&num_jump_misses)) +
         "  busy-wait-cycles: " + StringifyInt(atomic_read64(&num_busywait_cycles));
     }
     atomic_int64 num_ancient_hits;
     atomic_int64 num_ancient_misses;
     atomic_int64 num_busywait_cycles;
+    atomic_int64 num_jump_hits;
+    atomic_int64 num_jump_misses;
   };
   uint64_t GetNumInserts() { return atomic_read64(&buffer_pos_); }
   unsigned GetNumEntries() { return size_; }
@@ -56,6 +68,7 @@ class GlueBuffer {
   GlueBuffer &operator= (const GlueBuffer &other);
   ~GlueBuffer();
   void Resize(const unsigned new_size);
+  void SetCwdBuffer(CwdBuffer *cwd_buffer) { cwd_buffer_ = cwd_buffer; }
   
   inline void Add(const uint64_t inode, const uint64_t parent_inode, 
                   const uint32_t generation, const NameString &name)
@@ -122,6 +135,8 @@ class GlueBuffer {
   atomic_int64 buffer_pos_;
   unsigned size_;
   unsigned version_;
+  // If reconstructing fails, there might be a hit in the cwd buffer
+  CwdBuffer *cwd_buffer_;
   Statistics statistics_;
 };
 
@@ -130,7 +145,7 @@ class GlueBuffer {
  * Saves the inodes of current working directories on this Fuse volume.
  * Required for catalog reloads and reloads of the Fuse module.
  */
-class CwdBuffer : public catalog::RemountListener {
+class CwdBuffer {
  public:
   struct Statistics {
     Statistics() {
@@ -141,10 +156,10 @@ class CwdBuffer : public catalog::RemountListener {
     }
     std::string Print() {
       return 
-      "inserts: " + StringifyInt(atomic_read64(&num_inserts)) +
-      "  removes: " + StringifyInt(atomic_read64(&num_removes)) +
-      "  ancient(hits): " + StringifyInt(atomic_read64(&num_ancient_hits)) +
-      "  ancient(misses): " + StringifyInt(atomic_read64(&num_ancient_misses));
+        "inserts: " + StringifyInt(atomic_read64(&num_inserts)) +
+        "  removes: " + StringifyInt(atomic_read64(&num_removes)) +
+        "  ancient(hits): " + StringifyInt(atomic_read64(&num_ancient_hits)) +
+        "  ancient(misses): " + StringifyInt(atomic_read64(&num_ancient_misses));
     }
     atomic_int64 num_inserts;
     atomic_int64 num_removes;
@@ -183,6 +198,19 @@ class CwdBuffer : public catalog::RemountListener {
   std::map<uint64_t, PathString> inode2cwd_;
   std::string mountpoint_;
   Statistics statistics_;
+};
+
+
+class CwdRemountListener : public catalog::RemountListener {
+ public:
+  explicit CwdRemountListener(CwdBuffer *cwd_buffer) {
+    cwd_buffer_ = cwd_buffer;
+  }
+  void BeforeRemount(catalog::AbstractCatalogManager *source) {
+    cwd_buffer_->BeforeRemount(source);
+  }
+ private:
+  CwdBuffer *cwd_buffer_;
 };
 
 #endif  // CVMFS_GLUE_BUFFER_H_

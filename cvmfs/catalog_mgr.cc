@@ -34,14 +34,33 @@ InodeGenerationAnnotation::InodeGenerationAnnotation(const unsigned inode_width)
 }
 
 
-void InodeGenerationAnnotation::SetGeneration(const uint64_t new_generation) {
+void InodeGenerationAnnotation::SetGeneration(const uint64_t new_generation) 
+{
   LogCvmfs(kLogCatalog, kLogDebug, "new inode generation: %"PRIu64, 
            new_generation);
   
   const unsigned generation_width = inode_width_ - num_protected_bits_;
-  const uint64_t generation_cut = 
-    new_generation % (uint64_t(1) << generation_width);
+  const uint64_t generation_max = uint64_t(1) << generation_width;
+  
+  const uint64_t generation_cut = new_generation % generation_max;
   generation_annotation_ = generation_cut << num_protected_bits_;
+}
+  
+  
+void InodeGenerationAnnotation::CheckForOverflow( 
+  const uint64_t new_generation, 
+  const uint64_t initial_generation,
+  uint32_t *overflow_counter)
+{
+  const unsigned generation_width = inode_width_ - num_protected_bits_;
+  const uint64_t generation_max = uint64_t(1) << generation_width;
+  const uint64_t generation_span = new_generation - initial_generation;
+  if ((generation_span >= generation_max) &&
+      ((generation_span / generation_max) > *overflow_counter)) 
+  {
+    *overflow_counter = generation_span / generation_max;
+    LogCvmfs(kLogCatalog, kLogSyslog, "inode generation overflow");
+  }  
 }
 
 
@@ -56,7 +75,6 @@ AbstractCatalogManager::AbstractCatalogManager() {
   assert(retval == 0);
   retval = pthread_key_create(&pkey_sqlitemem_, NULL);
   assert(retval == 0);
-  disable_locks_ = false;
   remount_listener_ = NULL;
 }
 
@@ -124,11 +142,8 @@ LoadError AbstractCatalogManager::Remount(const bool dry_run) {
     return LoadCatalog(PathString("", 0), hash::Any(), NULL);
 
   WriteLock();
-  if (remount_listener_) {
-    disable_locks_ = true;
+  if (remount_listener_)
     remount_listener_->BeforeRemount(this);
-    disable_locks_ = false;
-  }
   
   string catalog_path;
   const LoadError load_error = LoadCatalog(PathString("", 0), hash::Any(),
@@ -338,6 +353,36 @@ bool AbstractCatalogManager::LookupPath(const PathString &path,
   Unlock();
   atomic_inc64(&statistics_.num_lookup_path_negative);
   return false;
+}
+  
+  
+/**
+ * Don't use.  Only for the CwdBuffer.
+ */
+bool AbstractCatalogManager::Path2InodeUnprotected(const PathString &path, 
+                                                   inode_t *inode)
+{
+  EnforceSqliteMemLimit();
+  
+  Catalog *best_fit = FindCatalog(path);
+  assert(best_fit != NULL);
+  
+  atomic_inc64(&statistics_.num_lookup_path);
+  LogCvmfs(kLogCatalog, kLogDebug, "inode lookup for '%s' in catalog: '%s'",
+           path.c_str(), best_fit->path().c_str());
+  DirectoryEntry dirent;
+  bool found = best_fit->LookupPath(path, &dirent);
+  
+  if (!found) {
+    LogCvmfs(kLogCatalog, kLogDebug, "ENOENT: %s", path.c_str());
+    atomic_inc64(&statistics_.num_lookup_path_negative);
+    return false;
+  }
+  
+  LogCvmfs(kLogCatalog, kLogDebug, "found entry %s in catalog %s",
+           path.c_str(), best_fit->path().c_str());
+  *inode = dirent.inode();
+  return true;
 }
 
 
