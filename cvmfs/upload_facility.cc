@@ -27,14 +27,16 @@ bool AbstractUploader::Initialize() {
 }
 
 
-void AbstractUploader::TearDown() {
-
-}
+void AbstractUploader::TearDown() {}
 
 
-void AbstractUploader::WaitForUpload() const {
+void AbstractUploader::WaitForUpload() const {}
 
-}
+
+void AbstractUploader::DisablePrecaching() {}
+
+
+void AbstractUploader::EnablePrecaching() {}
 
 
 void AbstractUploader::Respond(const callback_t  *callback,
