@@ -148,7 +148,8 @@ Failures Fetch(const std::string &base_url, const std::string &repository_name,
   retval = download::Fetch(&download_manifest);
   if (retval != download::kFailOk) {
     LogCvmfs(kLogCvmfs, kLogDebug | kLogSyslog,
-             "failed to download repository manifest (%d)", retval);
+             "failed to download repository manifest (%d) from %s", retval,
+             manifest_url.c_str());
     return kFailLoad;
   }
 
