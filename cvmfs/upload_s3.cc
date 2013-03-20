@@ -185,7 +185,7 @@ bool S3Uploader::Initialize() {
 
   const unsigned int number_of_cpus = GetNumberOfCpuCores();
   concurrent_workers_ =
-    new ConcurrentWorkers<S3UploadWorker>(number_of_cpus * 5,
+    new ConcurrentWorkers<S3UploadWorker>(number_of_cpus,
                                           number_of_cpus * 400,
                                           worker_context_.weak_ref());
 
