@@ -140,6 +140,9 @@ S3Uploader::S3Uploader(const SpoolerDefinition &spooler_definition) :
 
 bool S3Uploader::ParseSpoolerDefinition(
                                   const SpoolerDefinition &spooler_definition) {
+  // Default Spooler Configuration Scheme:
+  // <host name>[:port]@<access key>@<secret key>@<bucket name>
+
   std::vector<std::string>
     config = SplitString(spooler_definition.spooler_configuration, '@');
   if (config.size() != 4) {
