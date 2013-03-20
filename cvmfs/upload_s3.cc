@@ -274,6 +274,18 @@ void S3Uploader::WaitForUpload() const {
 }
 
 
+void S3Uploader::DisablePrecaching() {
+  AbstractUploader::DisablePrecaching();
+  concurrent_workers_->EnableDrainoutMode();
+}
+
+
+void S3Uploader::EnablePrecaching() {
+  AbstractUploader::EnablePrecaching();
+  concurrent_workers_->DisableDrainoutMode();
+}
+
+
 unsigned int S3Uploader::GetNumberOfErrors() const {
   return concurrent_workers_->GetNumberOfFailedJobs();
 }
