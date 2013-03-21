@@ -28,16 +28,14 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
   struct Parameters {
     Parameters(const std::string  &local_path,
                const std::string  &remote_path,
-               const bool          delete_after_upload,
                const callback_t   *callback) :
       local_path(local_path), remote_path(remote_path),
-      delete_after_upload(delete_after_upload), callback(callback) {}
+      callback(callback) {}
 
-    Parameters() : delete_after_upload(false), callback(NULL) {}
+    Parameters() : callback(NULL) {}
 
     const std::string  local_path;
     const std::string  remote_path;
-    const bool         delete_after_upload;
     const callback_t  *callback;
   };
 
@@ -89,10 +87,6 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
 
     LogCvmfs(kLogSpooler, kLogVerboseMsg, "S3 etag for %s: %s",
              input.local_path.c_str(), response.etag.c_str());
-
-    if (input.delete_after_upload) {
-      unlink(input.local_path.c_str());
-    }
 
     const S3Uploader::WorkerResults results(input.local_path,
                                             0,
@@ -212,7 +206,6 @@ void S3Uploader::Upload(const std::string  &local_path,
   concurrent_workers_->Schedule(
     S3UploadWorker::Parameters(local_path,
                                remote_path,
-                               true,
                                callback));
 }
 
@@ -224,7 +217,6 @@ void S3Uploader::Upload(const std::string  &local_path,
   concurrent_workers_->Schedule(
     S3UploadWorker::Parameters(local_path,
                                MakeCasPath(content_hash, hash_suffix),
-                               false,
                                callback));
 }
 
