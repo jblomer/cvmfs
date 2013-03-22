@@ -131,6 +131,8 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
       return;
     }
 
+    // S3_put_object() blocks until the upload is complete and invokes callbacks
+    // which are passed the CallbackData struct.
     CallbackData data(this, mmf, input);
     S3_put_object(&bucket_context_,
                    input.remote_path.data(),
@@ -139,8 +141,6 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
                    NULL,
                    &put_handler_,
                    (void*)&data);
-
-    // Respond() is called in completion callback
   }
 
   bool Initialize() {
@@ -241,8 +241,8 @@ bool S3Uploader::Initialize() {
 
   const unsigned int number_of_cpus = GetNumberOfCpuCores();
   concurrent_workers_ =
-    new ConcurrentWorkers<S3UploadWorker>(number_of_cpus,
-                                          number_of_cpus * 400,
+    new ConcurrentWorkers<S3UploadWorker>(number_of_cpus * 10,
+                                          number_of_cpus * 100,
                                           worker_context_.weak_ref());
 
   if (! concurrent_workers_->Initialize()) {
