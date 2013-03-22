@@ -76,14 +76,25 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
     }
 
     webstor::WsPutResponse response;
-    connection_->put(bucket_.c_str(),
-                     input.remote_path.c_str(),
-                     mmf.buffer(),
-                     mmf.size(),
-                     make_public,
-                     server_encryption,
-                     S3Uploader::kMimeType.c_str(),
-                     &response);
+    try {
+      connection_->put(bucket_.c_str(),
+                       input.remote_path.c_str(),
+                       mmf.buffer(),
+                       mmf.size(),
+                       make_public,
+                       server_encryption,
+                       S3Uploader::kMimeType.c_str(),
+                       &response);
+    } catch (const std::exception &e) {
+      LogCvmfs(kLogSpooler, kLogStderr, "Failed to push %s, S3 said:\n%s",
+               input.local_path.c_str(),
+               e.what());
+      const S3Uploader::WorkerResults results(input.local_path,
+                                              1,
+                                              input.callback);
+      master()->JobFailed(results);
+      return;
+    }
 
     LogCvmfs(kLogSpooler, kLogVerboseMsg, "S3 etag for %s: %s",
              input.local_path.c_str(), response.etag.c_str());
