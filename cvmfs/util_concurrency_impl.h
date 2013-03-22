@@ -509,7 +509,30 @@ typename ConcurrentWorkers<WorkerT>::WorkerJob
 {
   // Note: This method is exclusively called inside the worker threads!
   //       Any other usage might produce undefined behavior.
+<<<<<<< HEAD
   return jobs_queue_.Dequeue();
+=======
+
+  // lock the job queue
+  MutexLockGuard guard(job_queue_mutex_);
+
+  // wait until there is something to do
+  while (job_queue_.empty()) {
+    pthread_cond_wait(&job_queue_cond_not_empty_, &job_queue_mutex_);
+  }
+
+  // get the job and remove it from the queue
+  Job job = job_queue_.front();
+  job_queue_.pop();
+
+  // signal the Scheduler that there is a fair amount of free space now
+  if (job_queue_.size() < queue_drainout_threshold_) {
+    pthread_cond_broadcast(&job_queue_cond_not_full_);
+  }
+
+  // return the acquired job
+  return job;
+>>>>>>> s3_debug
 }
 
 

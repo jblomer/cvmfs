@@ -655,7 +655,6 @@ class ConcurrentWorkers : public Observable<typename WorkerT::returned_data> {
  private:
   // general configuration
   const size_t             number_of_workers_;    //!< number of concurrent
-                                                  //!<  worker threads
   const worker_context_t  *worker_context_;       //!< the WorkerT defined context
   const WorkerRunBinding   thread_context_;       //!< the thread context passed
                                                   //!<  to newly spawned threads
