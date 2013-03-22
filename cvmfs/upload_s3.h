@@ -11,10 +11,6 @@
 #include "upload_facility.h"
 #include "util.h"
 
-namespace webstor {
-  class WsConnection;
-}
-
 namespace upload {
 
 class S3UploadWorker;
@@ -76,7 +72,6 @@ class S3Uploader : public AbstractUploader {
 
  protected:
   bool ParseSpoolerDefinition(const SpoolerDefinition &spooler_definition);
-  webstor::WsConnection* GetSynchronousS3Connection() const;
 
   void UploadWorkerCallback(const WorkerResults &results);
 
@@ -85,9 +80,6 @@ class S3Uploader : public AbstractUploader {
 
   UniquePtr<WorkerContext>                       worker_context_;
   UniquePtr<ConcurrentWorkers<S3UploadWorker> >  concurrent_workers_;
-
-  mutable UniquePtr<webstor::WsConnection>       synchronous_connection_;
-  mutable pthread_mutex_t                        synchronous_connection_mutex_;
 };
 
 }
