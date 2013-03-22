@@ -60,13 +60,17 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
 
 
   struct CallbackData {
-    CallbackData(S3UploadWorker *worker, const MemoryMappedFile &mmf) :
+    CallbackData(      S3UploadWorker    *worker,
+                 const MemoryMappedFile  &mmf,
+                 const Parameters        &parameters) :
       worker(worker),
       mmf(mmf),
+      parameters(parameters),
       bytes_read(0) {}
 
           S3UploadWorker    *worker;
     const MemoryMappedFile  &mmf;
+    const Parameters        &parameters;
           size_t             bytes_read;
   };
 
@@ -74,7 +78,18 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
   static void completion_callback(      S3Status         status,
                                   const S3ErrorDetails  *error_details,
                                         void            *callback_data) {
-    LogCvmfs(kLogSpooler, kLogStdout, "completion\n"
+    CallbackData *data = (CallbackData*)callback_data;
+    if (status == S3StatusOK) {
+      LogCvmfs(kLogSpooler, kLogVerboseMsg, "pushed file %s to S3",
+               data->parameters.local_path.c_str());
+      const S3Uploader::WorkerResults results(data->parameters.local_path,
+                                              0,
+                                              data->parameters.callback);
+      data->worker->master()->JobSuccessful(results);
+      return;
+    }
+
+    LogCvmfs(kLogSpooler, kLogStderr, "pushing to S3 failed\n"
                                       "  Status:  %d - %s\n"
                                       "  Message: %s\n"
                                       "  Details: %s\n"
@@ -83,6 +98,11 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
              error_details->message,
              error_details->furtherDetails,
              error_details->extraDetailsCount);
+
+    const S3Uploader::WorkerResults results(data->parameters.local_path,
+                                            (int)status,
+                                            data->parameters.callback);
+    data->worker->master()->JobFailed(results);
   }
 
 
@@ -111,7 +131,7 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
       return;
     }
 
-    CallbackData data(this, mmf);
+    CallbackData data(this, mmf, input);
     S3_put_object(&bucket_context_,
                    input.remote_path.data(),
                    mmf.size(),
@@ -120,10 +140,7 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
                    &put_handler_,
                    (void*)&data);
 
-    const S3Uploader::WorkerResults results(input.local_path,
-                                            0,
-                                            input.callback);
-    master()->JobSuccessful(results);
+    // Respond() is called in completion callback
   }
 
   bool Initialize() {
