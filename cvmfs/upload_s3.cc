@@ -5,7 +5,7 @@
 #include "upload_s3.h"
 
 #include <cassert>
-
+#include <algorithm>
 #include <libs3.h>
 
 #include "util_concurrency.h"
@@ -50,35 +50,54 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
  public:
   S3UploadWorker(const worker_context *context) {
     full_host_name_ = context->host + ":" + context->port;
-    bucket_context_.hostName        = full_host_name_.c_str();
-    bucket_context_.bucketName      = context->bucket.c_str();
-    bucket_context_.protocol        = S3ProtocolHTTPS;
+    bucket_context_.hostName        = full_host_name_.data();
+    bucket_context_.bucketName      = context->bucket.data();
+    bucket_context_.protocol        = S3ProtocolHTTP;
     bucket_context_.uriStyle        = S3UriStylePath;
-    bucket_context_.accessKeyId     = context->access_key.c_str();
-    bucket_context_.secretAccessKey = context->secret_key.c_str();
+    bucket_context_.accessKeyId     = context->access_key.data();
+    bucket_context_.secretAccessKey = context->secret_key.data();
   }
 
-
-  static void completion_callback(      S3Status         status,
-                                  const S3ErrorDetails  *errorDetails,
-                                        void            *callbackData) {
-
-  }
-
-
-  static int data_callback(int bufferSize, char *buffer, void *callbackData) {
-
-    return 0;
-  }
 
   struct CallbackData {
     CallbackData(S3UploadWorker *worker, const MemoryMappedFile &mmf) :
       worker(worker),
-      mmf(mmf) {}
+      mmf(mmf),
+      bytes_read(0) {}
 
           S3UploadWorker    *worker;
     const MemoryMappedFile  &mmf;
+          size_t             bytes_read;
   };
+
+
+  static void completion_callback(      S3Status         status,
+                                  const S3ErrorDetails  *error_details,
+                                        void            *callback_data) {
+    LogCvmfs(kLogSpooler, kLogStdout, "completion\n"
+                                      "  Status:  %d - %s\n"
+                                      "  Message: %s\n"
+                                      "  Details: %s\n"
+                                      "  extras:  %d",
+             status, S3_get_status_name(status),
+             error_details->message,
+             error_details->furtherDetails,
+             error_details->extraDetailsCount);
+  }
+
+
+  static int data_callback(int buffer_size, char *buffer, void *callback_data) {
+    CallbackData *data = (CallbackData*)callback_data;
+    size_t bytes_to_copy = std::min((size_t)buffer_size,
+                                    data->mmf.size() - data->bytes_read);
+
+    memcpy(buffer,
+           data->mmf.buffer() + data->bytes_read,
+           bytes_to_copy);
+    data->bytes_read += bytes_to_copy;
+
+    return bytes_to_copy;
+  }
 
   void operator()(const Parameters &input) {
     MemoryMappedFile mmf(input.local_path);
@@ -94,7 +113,7 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
 
     CallbackData data(this, mmf);
     S3_put_object(&bucket_context_,
-                   input.remote_path.c_str(),
+                   input.remote_path.data(),
                    mmf.size(),
                    &properties_,
                    NULL,
@@ -108,7 +127,15 @@ class S3UploadWorker : public ConcurrentWorker<S3UploadWorker> {
   }
 
   bool Initialize() {
-    properties_.contentType = S3Uploader::kMimeType.c_str();
+    properties_.contentType                = S3Uploader::kMimeType.data();
+    properties_.md5                        = NULL;
+    properties_.cacheControl               = NULL;
+    properties_.contentDispositionFilename = NULL;
+    properties_.contentEncoding            = NULL;
+    properties_.expires                    = 0;
+    properties_.cannedAcl                  = S3CannedAclPublicRead;
+    properties_.metaDataCount              = 0;
+    properties_.metaData                   = 0;
 
     put_handler_.responseHandler.propertiesCallback = NULL;
     put_handler_.responseHandler.completeCallback   = &S3UploadWorker::completion_callback;
@@ -192,7 +219,7 @@ bool S3Uploader::WillHandle(const SpoolerDefinition &spooler_definition) {
 bool S3Uploader::Initialize() {
   assert (worker_context_);
 
-  S3Status ret = S3_initialize("", S3_INIT_ALL, worker_context_->host.c_str());
+  S3Status ret = S3_initialize("", S3_INIT_ALL, "");
   assert (ret == S3StatusOK);
 
   const unsigned int number_of_cpus = GetNumberOfCpuCores();

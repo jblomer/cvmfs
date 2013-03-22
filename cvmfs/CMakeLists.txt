@@ -426,7 +426,7 @@ add_executable(debug
   debug.cc
 )
 set_target_properties (debug PROPERTIES COMPILE_FLAGS "${CVMFS_SWISSKNIFE_CFLAGS} -DDEBUGMSG -g")
-target_link_libraries (debug ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} /home/rene/Documents/Schweinestall/webstor/webstor.a xml2 pthread dl)
+target_link_libraries (debug ${CVMFS_SWISSKNIFE_LIBS} ${SQLITE3_LIBRARY} ${CURL_LIBRARIES} ${ZLIB_LIBRARIES} ${OPENSSL_LIBRARIES} ${LIBCURL_ARCHIVE} ${CARES_ARCHIVE} ${SQLITE3_ARCHIVE} ${ZLIB_ARCHIVE} ${RT_LIBRARY} ${VJSON_ARCHIVE} /usr/lib/libs3.a xml2 pthread dl)
 
 
 
