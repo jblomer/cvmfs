@@ -5,3 +5,5 @@ build/
 benchmark/
 *.pyc
 test/cloud_testing/ec2_config.sh
+web/cvmfs_web/settings.py
+web/db.sqlite3
