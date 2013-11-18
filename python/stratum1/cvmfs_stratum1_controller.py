@@ -15,7 +15,8 @@ def replicate(repo, *args):
 
 
 def info(repo, *args):
-    output = json.dumps({'result': 'to come'}, indent=4)
+    output = json.dumps({'name': repo.fqrn,
+                         'type': repo.type}, indent=4)
     return '200 OK', output
 
 
