@@ -14,6 +14,11 @@ def replicate(repo, *args):
     return '200 OK', output
 
 
+def info(repo, *args):
+    output = json.dumps({'result': 'to come'}, indent=4)
+    return '200 OK', output
+
+
 def _sanitize_argument_list(argument_list):
     return [ arg for arg in argument_list if arg != '' ]
 
@@ -27,7 +32,8 @@ def _get_repository(fqrn):
         return None
 
 _RPC_calls = { 'status':    status,
-               'replicate': replicate }
+               'replicate': replicate,
+               'info':      info }
 
 def main(repo_fqrn, rpc_uri, start_response):
     repo = _get_repository(repo_fqrn)
@@ -40,10 +46,10 @@ def main(repo_fqrn, rpc_uri, start_response):
 
     if method not in _RPC_calls:
         start_response('501 Not Implemented', [])
-        return [] 
+        return []
 
     args = _sanitize_argument_list(uri_tokens[1:])
-    retcode, payload = _RPC_calls[method](repo, args)    
+    retcode, payload = _RPC_calls[method](repo, args)
 
     response_headers = [('Content-type',   'application/json'),
                         ('Content-Length', str(len(payload)))]
