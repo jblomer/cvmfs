@@ -1,11 +1,22 @@
 import json
 import re
+import os
+import cvmfs
 from cvmfs.repository import LocalRepository, RepositoryNotFound
 
-def status(repo, *args):
-    output = json.dumps({'name'  : repo.fqrn,
-                         'state' : 'idle',
-                         'args'  : repr(args)}, indent=4)
+def stratum1_status(repo, *args):
+    if repo.type != 'stratum1':
+        return '400 Bad Request', ''
+    spool_dir = repo.read_server_config('CVMFS_SPOOL_DIR')
+    output = ''
+    try:
+        with open(os.path.join(spool_dir, 'snapshot_in_progress')) as snap_file:
+            output = json.dumps({'name'       : repo.fqrn,
+                                 'state'      : 'snapshotting',
+                                 'start time' : snap_file.readline()}, indent=4)
+    except:
+        output = json.dumps({'name'       : repo.fqrn,
+                             'state'      : 'idle'}, indent=4)
     return '200 OK', output
 
 
@@ -32,9 +43,9 @@ def _get_repository(fqrn):
     except RepositoryNotFound, e:
         return None
 
-_RPC_calls = { 'status':    status,
-               'replicate': replicate,
-               'info':      info }
+_RPC_calls = { 'stratum1_status' : stratum1_status,
+               'replicate'       : replicate,
+               'info'            : info }
 
 def main(repo_fqrn, rpc_uri, start_response):
     repo = _get_repository(repo_fqrn)
