@@ -21,7 +21,8 @@ def stratum1_status(repo, *args):
 
 
 def replicate(repo, *args):
-    output = json.dumps({'result': 'ok'}, indent=4)
+    output = json.dumps({'name'  : repo.fqrn,
+                         'result': 'ok'}, indent=4)
     return '200 OK', output
 
 
