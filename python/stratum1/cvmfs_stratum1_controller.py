@@ -26,8 +26,13 @@ def replicate(repo, *args):
 
 
 def info(repo, *args):
-    output = json.dumps({'name': repo.fqrn,
-                         'type': repo.type}, indent=4)
+    output = json.dumps({'name'         : repo.fqrn,
+                         'type'         : repo.type,
+                         'root_catalog' : repo.manifest.root_catalog,
+                         'root_hash'    : repo.manifest.root_hash,
+                         'ttl'          : repo.manifest.ttl,
+                         'revision'     : repo.manifest.revision,
+                         'version'      : cvmfs.server_version}, indent=4)
     return '200 OK', output
 
 
