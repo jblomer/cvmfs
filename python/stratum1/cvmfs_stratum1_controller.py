@@ -16,12 +16,10 @@ def stratum1_status(repo, *args):
     output = ''
     try:
         with open(os.path.join(spool_dir, 'snapshot_in_progress')) as snap_file:
-            output = json.dumps({'name'       : repo.fqrn,
-                                 'state'      : 'snapshotting',
-                                 'start time' : snap_file.readline()}, indent=4)
+            output = _make_json(repo, {'state'      : 'snapshotting',
+                                       'start_time' : snap_file.readline()})
     except:
-        output = json.dumps({'name'       : repo.fqrn,
-                             'state'      : 'idle'}, indent=4)
+        output = _make_json(repo, {'state' : 'idle'})
     return '200 OK', output
 
 
@@ -32,13 +30,12 @@ def replicate(repo, *args):
 
 
 def info(repo, *args):
-    output = json.dumps({'name'         : repo.fqrn,
-                         'type'         : repo.type,
-                         'root_catalog' : repo.manifest.root_catalog,
-                         'root_hash'    : repo.manifest.root_hash,
-                         'ttl'          : repo.manifest.ttl,
-                         'revision'     : repo.manifest.revision,
-                         'version'      : cvmfs.server_version}, indent=4)
+    output = _make_json(repo, {'type'         : repo.type,
+                               'root_catalog' : repo.manifest.root_catalog,
+                               'root_hash'    : repo.manifest.root_hash,
+                               'ttl'          : repo.manifest.ttl,
+                               'revision'     : repo.manifest.revision,
+                               'version'      : cvmfs.server_version})
     return '200 OK', output
 
 
