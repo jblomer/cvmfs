@@ -4,6 +4,11 @@ import os
 import cvmfs
 from cvmfs.repository import LocalRepository, RepositoryNotFound
 
+def _make_json(repo, json_fields):
+    json_fields['name'] = repo.fqrn
+    return json.dumps(json_fields, indent=4)
+
+
 def stratum1_status(repo, *args):
     if repo.type != 'stratum1':
         return '400 Bad Request', ''
