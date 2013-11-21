@@ -1,6 +1,7 @@
 import json
 import re
 import os
+import subprocess
 import cvmfs
 from cvmfs.repository import LocalRepository, RepositoryNotFound
 
@@ -24,9 +25,25 @@ def stratum1_status(repo, *args):
 
 
 def replicate(repo, *args):
-    output = json.dumps({'name'  : repo.fqrn,
-                         'result': 'ok'}, indent=4)
-    return '200 OK', output
+    exec_string  = ["cvmfs_server", "snapshot", repo.fqrn]
+    popen_object = None
+    try:
+        popen_object = subprocess.Popen(exec_string, stdout=subprocess.PIPE,
+                                                     stderr=subprocess.PIPE,
+                                                     stdin=subprocess.PIPE)
+    except OSError, e:
+        output = _make_json(repo, {'result'      : 'error',
+                                   'description' : str(e)})
+        return '503 Service Unavailable', output
+
+    retcode = popen_object.poll()
+    if retcode == None or retcode == 0:
+        output = _make_json(repo, {'result' : 'ok'})
+        return '200 OK', output
+    else:
+        output = _make_json(repo, {'result'      : 'error',
+                                   'return_code' : retcode})
+        return '500 Internal Server Error', output
 
 
 def info(repo, *args):
