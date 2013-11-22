@@ -11,20 +11,6 @@ def _make_json(repo, json_fields):
     return json.dumps(json_fields, indent=4)
 
 
-def stratum1_status(repo, *args):
-    if repo.type != 'stratum1':
-        return '400 Bad Request', ''
-    spool_dir = repo.read_server_config('CVMFS_SPOOL_DIR')
-    output = ''
-    try:
-        with open(os.path.join(spool_dir, 'snapshot_in_progress')) as snap_file:
-            output = _make_json(repo, {'state'      : 'snapshotting',
-                                       'start_time' : snap_file.readline()})
-    except:
-        output = _make_json(repo, {'state' : 'idle'})
-    return '200 OK', output
-
-
 def replicate(repo, *args):
     exec_string  = ["cvmfs_server", "snapshot", repo.fqrn]
     popen_object = None
@@ -73,8 +59,7 @@ def _get_repository(fqrn):
     except RepositoryNotFound, e:
         return None
 
-_RPC_calls = { 'stratum1_status' : stratum1_status,
-               'replicate'       : replicate,
+_RPC_calls = { 'replicate'       : replicate,
                'info'            : info }
 
 def main(repo_fqrn, rpc_uri, start_response):
