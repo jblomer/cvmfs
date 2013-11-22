@@ -2,6 +2,7 @@ import json
 import re
 import os
 import subprocess
+from time import sleep
 import cvmfs
 from cvmfs.repository import LocalRepository, RepositoryNotFound
 
@@ -36,6 +37,7 @@ def replicate(repo, *args):
                                    'description' : str(e)})
         return '503 Service Unavailable', output
 
+    sleep(0.1) # give process some time (might immediately fail/succeed)
     retcode = popen_object.poll()
     if retcode == None or retcode == 0:
         output = _make_json(repo, {'result' : 'ok'})
