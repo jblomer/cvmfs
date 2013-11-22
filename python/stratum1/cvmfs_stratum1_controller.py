@@ -44,7 +44,10 @@ def replicate(repo, *args):
         return '200 OK', output
     else:
         output = _make_json(repo, {'result'      : 'error',
-                                   'return_code' : retcode})
+                                   'return_code' : retcode,
+                                   'exec_string' : exec_string,
+                                   'stdout'      : popen_object.stdout.readlines(),
+                                   'stderr'      : popen_object.stderr.readlines()})
         return '500 Internal Server Error', output
 
 
